@@ -627,9 +627,42 @@ class EclipseJDTLS(SolidLanguageServer):
         initialize_params["initializationOptions"]["workspaceFolders"] = [repo_uri]
         bundles = [self.runtime_dependency_paths.intellicode_jar_path]
         initialize_params["initializationOptions"]["bundles"] = bundles
-        initialize_params["initializationOptions"]["settings"]["java"]["configuration"]["runtimes"] = [
-            {"name": "JavaSE-21", "path": self.runtime_dependency_paths.jre_home_path, "default": True}
-        ]
+
+        # Configure Java runtimes
+        runtimes = [{"name": "JavaSE-21", "path": self.runtime_dependency_paths.jre_home_path, "default": False}]
+
+        # Check for JAVA_HOME environment variable to use system JDK
+        java_home = os.environ.get("JAVA_HOME")
+        if java_home and os.path.exists(java_home):
+            # Detect Java version from JAVA_HOME
+            try:
+                java_exe = os.path.join(java_home, "bin", "java")
+                if os.path.exists(java_exe):
+                    import re
+                    import subprocess
+
+                    result = subprocess.run([java_exe, "--version"], check=False, capture_output=True, text=True, timeout=5)
+                    version_output = result.stdout or result.stderr
+                    # Extract version number (e.g., "java 25" -> 25)
+                    version_match = re.search(r"java (\d+)", version_output)
+                    if version_match:
+                        java_version = int(version_match.group(1))
+                        runtime_name = f"JavaSE-{java_version}"
+                        # Add system JDK as default runtime
+                        runtimes.append({"name": runtime_name, "path": java_home, "default": True})
+                        # Set java.home to use system JDK for project compilation
+                        initialize_params["initializationOptions"]["settings"]["java"]["home"] = java_home
+                        self.logger.log(f"Using system JDK from JAVA_HOME: {runtime_name} at {java_home}", logging.INFO)
+                    else:
+                        self.logger.log(f"Could not detect Java version from JAVA_HOME: {java_home}", logging.WARNING)
+                        runtimes[0]["default"] = True  # Fallback to JDK 21
+            except Exception as e:
+                self.logger.log(f"Error detecting JAVA_HOME version: {e}", logging.WARNING)
+                runtimes[0]["default"] = True  # Fallback to JDK 21
+        else:
+            runtimes[0]["default"] = True  # No JAVA_HOME, use bundled JDK 21
+
+        initialize_params["initializationOptions"]["settings"]["java"]["configuration"]["runtimes"] = runtimes
 
         for runtime in initialize_params["initializationOptions"]["settings"]["java"]["configuration"]["runtimes"]:
             assert "name" in runtime
