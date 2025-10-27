@@ -647,7 +647,16 @@ class EclipseJDTLS(SolidLanguageServer):
                     version_match = re.search(r"java (\d+)", version_output)
                     if version_match:
                         java_version = int(version_match.group(1))
-                        runtime_name = f"JavaSE-{java_version}"
+                        # Map newer Java versions to supported environment names
+                        # EclipseJDTLS may not recognize very new versions, so we use the highest known compatible version
+                        # Known JDTLS execution environments: JavaSE-1.8, JavaSE-11, JavaSE-17, JavaSE-21, JavaSE-22, JavaSE-23
+                        if java_version >= 23:
+                            runtime_name = "JavaSE-23"
+                            self.logger.log(
+                                f"Detected Java {java_version}, using environment name '{runtime_name}' for compatibility", logging.INFO
+                            )
+                        else:
+                            runtime_name = f"JavaSE-{java_version}"
                         # Add system JDK as default runtime
                         runtimes.append({"name": runtime_name, "path": java_home, "default": True})
                         # Set java.home to use system JDK for project compilation
